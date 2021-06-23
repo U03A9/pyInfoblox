@@ -35,7 +35,7 @@ help="Specify DNS zone to act on"
 )
 
 arguments.add_argument('-r', '--regex', action="store",
-default="((.*)(-mgmt)$)", dest="regex_string", help="Supports regex Default: (.*) [All]"
+default="((.*))", dest="regex_string", help="Supports regex Default: (.*) [All]"
 )
 
 arguments.add_argument('-d', '--delete', action="store_true", dest='set_records_delete',
@@ -161,7 +161,6 @@ def sort_records(all_records, regex_string):
 
 def delete_records(conn, all_records, regex_string):
     '''Delete entries'''
-    print("Sanity check! Printing vars(record)")
     for record in all_records:
         fqdn = record.name + "." + record.zone
 
@@ -169,9 +168,9 @@ def delete_records(conn, all_records, regex_string):
             # Print callable methods
             pprint(vars(record))
             print("=====++++++++---------- Sanity check! ---------+++++++======")
+            print(f"\t\tTrying to delete {fqdn}")
 
         if re.search(r'' + regex_string, str(record.name)):
-            print(f"SANITY CHECK: Trying to delete {fqdn}")
             if (record.type) == "record:a":
                 try:
                     arecord = objects.ARecord.search(conn, name=fqdn, ref=record.ref)
