@@ -32,8 +32,8 @@ arguments.add_argument('dns_zone', action="store",
 help="Specify DNS zone to act on"
 )
 
-arguments.add_argument('-s', '--search', action="store",
-default="((.*)(-mgmt)$)", dest="search_string", help="Search term. Supports regex Default: (.*) [All]"
+arguments.add_argument('-r', '--regex', action="store",
+default="((.*)(-mgmt)$)", dest="regex_string", help="Supports regex Default: (.*) [All]"
 )
 
 arguments.add_argument('-d', '--delete', action="store_true", dest='set_records_delete',
@@ -52,7 +52,7 @@ arguments.add_argument('-c', '--create', action="store_true", dest='create_recor
 default=False, help="Enable fake record creation. Default: False"
 )
 
-arguments.add_argument('-x', '--xdebug', action="store_true", dest='debug_flag',
+arguments.add_argument('-x', '--debug', action="store_true", dest='debug_flag',
 default=False, help="Denable debug messages. Default: True"
 )
 
@@ -69,7 +69,7 @@ def main(_args):
     # Start kickoff
     try:
 
-        start_records_manipulation(conn, args.dns_zone, args.search_string, args.create_record,
+        start_records_manipulation(conn, args.dns_zone, args.regex_string, args.create_record,
          args.print_type_captured, args.print_type_other, args.set_records_delete
          )
 
@@ -129,48 +129,47 @@ def collect_records(conn, dns_zone):
     # Search entries
     all_records = objects.Allrecords.search_all(conn, zone=dns_zone)
 
-    #for record in all_records:
-
-        #if DEBUG_FLAG is True:
-            # Print callable methods
-            #pprint(vars(record))
+    if DEBUG_FLAG is True:
+        for record in all_records:
+            #Print callable methods
+            pprint(vars(record))
 
     return all_records
 
-def sort_records(all_records, search_string):
+def sort_records(all_records, regex_string):
     '''Sort all records'''
     found_records = []
     other_records = []
 
     for record in all_records:
 
+        record_fqdn = record.name + "." + record.zone
+
         try:
-            if re.search(r'' + search_string, str(record.name)):
-                found_records += [[record.name, record.zone, record.type, record.ref]]
+            if re.search(r'' + regex_string, str(record.name)):
+                found_records += [[record.name, record.zone, record.type, record_fqdn, record.ref]]
 
             else:
-                other_records += [[record.name, record.zone, record.type, record.ref]]
+                other_records += [[record.name, record.zone, record.type, record_fqdn, record.ref]]
 
         except SystemError as exception_message:
             print(exception_message)
 
     return found_records, other_records
 
-def delete_records(conn, found_records, search_string):
+def delete_records(conn, all_records, regex_string):
     '''Delete entries'''
-
-            
-    if DEBUG_FLAG is True:
-        # Print callable methods
-        pprint(vars(found_records))
-
-    print("Deleting found records.....")
-    for record in found_records:
-
+    print("Sanity check! Printing vars(record)")
+    for record in all_records:
         fqdn = record.name + "." + record.zone
-        print(f"Found: {fqdn} for deletion")
 
-        if (record.name).find(search_string):
+        if DEBUG_FLAG is True:
+            # Print callable methods
+            pprint(vars(record))
+            print("=====++++++++---------- Sanity check! ---------+++++++======")
+            
+        if re.search(r'' + regex_string, str(record.name)):
+            print(f"SANITY CHECK: Trying to delete {fqdn}")
             if (record.type) == "record:a":
                 try:
                     arecord = objects.ARecord.search(conn, name=fqdn, ref=record.ref)
@@ -232,12 +231,12 @@ def print_all_records(found_records, other_records):
 
     # Print other records
     print("======-------------OTHER RECORDS-------------=====")
-    other_records = pandas.DataFrame(other_records, columns = ['NAME', 'ZONE', 'TYPE', 'REF'])
+    other_records = pandas.DataFrame(other_records, columns = ['NAME', 'ZONE', 'TYPE', 'FQDN', 'REF'])
 
     if DEBUG_FLAG:
-        print((other_records[['NAME', 'ZONE', 'TYPE', 'REF']]).to_string(index=False))
+        print((other_records[['NAME', 'ZONE', 'TYPE', 'FQDN', 'REF']]).to_string(index=False))
     else:
-        print((other_records[['NAME', 'ZONE', 'TYPE']]).to_string(index=False))
+        print((other_records[['NAME', 'ZONE', 'TYPE', 'FQDN']]).to_string(index=False))
     print("======---------------------------------------=====")
 
     # Gaps
@@ -245,36 +244,36 @@ def print_all_records(found_records, other_records):
 
     # Print mgmt records
     print("======------------CAPTURED RECORDS-----------=====")
-    found_records = pandas.DataFrame(found_records, columns = ['NAME', 'ZONE', 'TYPE', 'REF'])
+    found_records = pandas.DataFrame(found_records, columns = ['NAME', 'ZONE', 'TYPE', 'FQDN', 'REF'])
     if DEBUG_FLAG:
-        print((found_records[['NAME', 'ZONE', 'TYPE', 'REF']]).to_string(index=False))
+        print((found_records[['NAME', 'ZONE', 'TYPE', 'FQDN', 'REF']]).to_string(index=False))
     else:
-        print((found_records[['NAME', 'ZONE', 'TYPE']]).to_string(index=False))
+        print((found_records[['NAME', 'ZONE', 'TYPE', 'FQDN']]).to_string(index=False))
     print("======---------------------------------------=====")
 
 def print_captured_records(found_records):
     '''Print mgmt records'''
     # Print mgmt records
     print("======------------CAPTURED RECORDS-----------=====")
-    found_records = pandas.DataFrame(found_records, columns = ['NAME', 'ZONE', 'TYPE', 'REF'])
+    found_records = pandas.DataFrame(found_records, columns = ['NAME', 'ZONE', 'TYPE', 'FQDN', 'REF'])
     if DEBUG_FLAG:
-        print((found_records[['NAME', 'ZONE', 'TYPE', 'REF']]).to_string(index=False))
+        print((found_records[['NAME', 'ZONE', 'TYPE', 'FQDN', 'REF']]).to_string(index=False))
     else:
-        print((found_records[['NAME', 'ZONE', 'TYPE']]).to_string(index=False))
+        print((found_records[['NAME', 'ZONE', 'TYPE', 'FQDN']]).to_string(index=False))
     print("======---------------------------------------=====")
 
 def print_other_records(other_records):
     '''Print other records'''
     # Print other records
     print("======-------------OTHER RECORDS-------------=====")
-    other_records = pandas.DataFrame(other_records, columns = ['NAME', 'ZONE', 'TYPE', 'REF'])
+    other_records = pandas.DataFrame(other_records, columns = ['NAME', 'ZONE', 'TYPE', 'FQDN', 'REF'])
     if DEBUG_FLAG:
-        print((other_records[['NAME', 'ZONE', 'TYPE', 'REF']]).to_string(index=False))
+        print((other_records[['NAME', 'ZONE', 'TYPE', 'FQDN', 'REF']]).to_string(index=False))
     else:
-        print((other_records[['NAME', 'ZONE', 'TYPE']]).to_string(index=False))
+        print((other_records[['NAME', 'ZONE', 'TYPE', 'FQDN']]).to_string(index=False))
         print("======---------------------------------------=====")
 
-def start_records_manipulation(conn, dns_zone, search_string, create_record,
+def start_records_manipulation(conn, dns_zone, regex_string, create_record,
     print_type_captured, print_type_other, set_records_delete
     ):
     '''Manipulation function'''
@@ -286,7 +285,7 @@ def start_records_manipulation(conn, dns_zone, search_string, create_record,
 
             try:
                 create_dummy_records(conn, dns_zone)
-                records_print(conn, dns_zone, search_string, print_type_captured,
+                records_print(conn, dns_zone, regex_string, print_type_captured,
                     print_type_other, set_records_delete
                     )
 
@@ -296,7 +295,7 @@ def start_records_manipulation(conn, dns_zone, search_string, create_record,
         elif eval(str(create_record)) is False:
             try:
                 print("Dummy creation skipped skipped.")
-                records_print(conn, dns_zone, search_string, print_type_captured,
+                records_print(conn, dns_zone, regex_string, print_type_captured,
                     print_type_other, set_records_delete
                     )
 
@@ -308,18 +307,16 @@ def start_records_manipulation(conn, dns_zone, search_string, create_record,
 
     try:
         if set_records_delete is True:
+
+            all_records = collect_records(conn, dns_zone)
             print("=====0000 WARNING 0000====")
             input("  Press enter to continue with deletion (CTRL+C to cancel)")
-
+            
             try:
-                try:
-                    delete_records(conn, sort_records((collect_records(conn, dns_zone)), search_string), search_string)
-                    records_print(conn, dns_zone, search_string, print_type_captured,
-                        print_type_other, set_records_delete
-                        )
-
-                except SystemError as exception_message:
-                    print(exception_message)
+                delete_records(conn, all_records, regex_string)
+                records_print(conn, dns_zone, regex_string, print_type_captured,
+                    print_type_other, set_records_delete
+                    )
 
             except SystemError as exception_message:
                 print(exception_message)
@@ -335,13 +332,13 @@ def start_records_manipulation(conn, dns_zone, search_string, create_record,
     except SystemError as exception_message:
         print(exception_message)
 
-def records_print(conn, dns_zone, search_string, print_type_captured,
+def records_print(conn, dns_zone, regex_string, print_type_captured,
     print_type_other, set_records_delete
     ):
     '''Orchestrates printing'''
 
     # Collect records and sort them
-    sorted_records = sort_records((collect_records(conn, dns_zone)), search_string)
+    sorted_records = sort_records(collect_records(conn, dns_zone), regex_string)
 
     try:
         # If all defaults, print all records
