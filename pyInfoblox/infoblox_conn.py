@@ -24,9 +24,11 @@ from infoblox_client import objects
 
 # Set up arguments
 arguments = argparse.ArgumentParser(description='''
-This python script connects to an infoblox DNS instance and queries all records.
+This python script connects to an infoblox DNS instance and queries all records. It allows
+you to search for specific records by hostname using regular expressions. It will then
+return this data in a pandas dataframe. You can use the -d flag to trigger a delete
+prompt for entries found through the -r flag.
 
-Justin Garcia 24361 | 6/22/2021
 ''')
 arguments.add_argument('dns_zone', action="store",
 help="Specify DNS zone to act on"
@@ -167,7 +169,7 @@ def delete_records(conn, all_records, regex_string):
             # Print callable methods
             pprint(vars(record))
             print("=====++++++++---------- Sanity check! ---------+++++++======")
-            
+
         if re.search(r'' + regex_string, str(record.name)):
             print(f"SANITY CHECK: Trying to delete {fqdn}")
             if (record.type) == "record:a":
