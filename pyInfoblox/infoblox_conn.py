@@ -34,7 +34,7 @@ help="Specify DNS zone to act on"
 )
 
 arguments.add_argument('-s', '--search', action="store",
-default="(.*)", dest="search_string", help="Search term. Supports regex Default: (.*) [All]"
+default="((.*)(-mgmt)$)", dest="search_string", help="Search term. Supports regex Default: (.*) [All]"
 )
 
 arguments.add_argument('-d', '--delete', action="store_true", dest='set_records_delete',
@@ -130,11 +130,11 @@ def collect_records(conn, dns_zone):
     # Search entries
     all_records = objects.Allrecords.search_all(conn, zone=dns_zone)
 
-    for record in all_records:
+    #for record in all_records:
 
-        if DEBUG_FLAG is True:
+        #if DEBUG_FLAG is True:
             # Print callable methods
-            pprint(vars(record))
+            #pprint(vars(record))
 
     return all_records
 
@@ -157,13 +157,19 @@ def sort_records(all_records, search_string):
 
     return found_records, other_records
 
-def delete_records(conn, all_records, search_string):
+def delete_records(conn, found_records, search_string):
     '''Delete entries'''
 
+            
+    if DEBUG_FLAG is True:
+        # Print callable methods
+        pprint(vars(found_records))
+
     print("Deleting found records.....")
-    for record in all_records:
+    for record in found_records:
 
         fqdn = record.name + "." + record.zone
+        print(f"Found: {fqdn} for deletion")
 
         if (record.name).find(search_string):
             if (record.type) == "record:a":
@@ -242,9 +248,9 @@ def print_all_records(found_records, other_records):
     print("======------------CAPTURED RECORDS-----------=====")
     found_records = pandas.DataFrame(found_records, columns = ['NAME', 'ZONE', 'TYPE', 'REF'])
     if DEBUG_FLAG:
-        print((other_records[['NAME', 'ZONE', 'TYPE', 'REF']]).to_string(index=False))
+        print((found_records[['NAME', 'ZONE', 'TYPE', 'REF']]).to_string(index=False))
     else:
-        print((other_records[['NAME', 'ZONE', 'TYPE']]).to_string(index=False))
+        print((found_records[['NAME', 'ZONE', 'TYPE']]).to_string(index=False))
     print("======---------------------------------------=====")
 
 def print_captured_records(found_records):
@@ -308,7 +314,7 @@ def start_records_manipulation(conn, dns_zone, search_string, create_record,
 
             try:
                 try:
-                    delete_records(conn, collect_records(conn, dns_zone), search_string)
+                    delete_records(conn, sort_records((collect_records(conn, dns_zone)), search_string), search_string)
                     records_print(conn, dns_zone, search_string, print_type_captured,
                         print_type_other, set_records_delete
                         )
