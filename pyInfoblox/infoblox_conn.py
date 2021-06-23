@@ -3,7 +3,7 @@
 '''
 
 This python script connects to an infoblox DNS instance and queries all records.
-In this case it deletes records that have a hostname ending in "-mgmt"
+
 
 Justin Garcia 24361 | 6/22/2021
 
@@ -25,7 +25,6 @@ from infoblox_client import objects
 # Set up arguments
 arguments = argparse.ArgumentParser(description='''
 This python script connects to an infoblox DNS instance and queries all records.
-In this case it deletes records that have a hostname ending in "-mgmt"
 
 Justin Garcia 24361 | 6/22/2021
 ''')
