@@ -146,7 +146,7 @@ def collect_records(conn, record_type, search_string, regex_search):
     # Search entries
     records = []
 
-    if search_string in ['All', 'all', '']:
+    if search_string in ['All', 'all', '', ' ']:
         search_string = "(.*)"
     if record_type in ['All', 'all']:
         for record_type in ['a', 'aaaa', 'txt', 'host']:
