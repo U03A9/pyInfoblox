@@ -10,7 +10,6 @@ Justin Garcia 24361 | 6/22/2021
 
 # Debugging assistance
 from pprint import pprint
-import re
 import argparse
 import pandas
 import urllib3
@@ -21,11 +20,6 @@ from dotenv.main import dotenv_values
 from infoblox_client import connector
 from infoblox_client import objects
 
-# Set pandas options
-pandas.set_option('display.max_colwidth', 500)
-pandas.set_option('display.max_columns', 0)
-
-
 # Set up arguments
 arguments = argparse.ArgumentParser(description='''
 This python script connects to an infoblox DNS instance and queries all records. It allows
@@ -34,24 +28,24 @@ return this data in a pandas dataframe. You can use the -d flag to trigger a del
 prompt for entries found through the -r flag.
 
 ''')
-arguments.add_argument('dns_zone', action="store",
-help="Specify DNS zone to act on"
+
+arguments.add_argument('record_type', action="store",
+help="Record type to search. Default: All"
 )
 
-arguments.add_argument('-r', '--regex', action="store",
-default="((.*))", dest="regex_string", help="Supports regex Default: (.*) [All]"
+arguments.add_argument('search_string', action="store", nargs='?',
+default="All", help="Hostname to search for")
+
+arguments.add_argument('-z', '--zone', action="store", nargs='?',
+dest="dns_zone", default="thenile.gemstatecyber.com", help="Specify DNS zone to act on"
+)
+
+arguments.add_argument('-r', '--regex', action="store_true", dest="regex_search",
+default=False, help="Enables regex support for hostname"
 )
 
 arguments.add_argument('-d', '--delete', action="store_true", dest='set_records_delete',
 default=False, help="Prompt to delete records. Default: Print, don't prompt to delete"
-)
-
-arguments.add_argument('-f', '--found', action="store_true", dest='print_type_captured',
-default=False, help="Specify to display only captured data with pandas. Default: False"
-)
-
-arguments.add_argument('-o', '--other', action="store_true", dest='print_type_other',
-default=False, help="Specify to display only other data with pandas. Default: False"
 )
 
 arguments.add_argument('-c', '--create', action="store_true", dest='create_record',
@@ -73,18 +67,30 @@ load_dotenv()
 # Enable args
 def main(_args):
     '''Main function'''
+    try:
 
-    conn = connector.Connector(dotenv_values())
+        conn = connector.Connector(dotenv_values())
+
+    except SystemError as exception_message:
+        pprint(exception_message)
+
+    try:
+        records = collect_records(conn, args.record_type,
+         args.search_string, args.regex_search)
+
+    except SystemError as exception_message:
+        pprint(exception_message)
 
     # Start kickoff
     try:
 
-        start_records_manipulation(conn, args.dns_zone, args.regex_string, args.create_record,
-         args.print_type_captured, args.print_type_other, args.set_records_delete
+        start_records_manipulation(conn, args.dns_zone, args.record_type,
+         args.search_string, args.create_record, records, args.set_records_delete,
+         args.regex_search
          )
 
     except SystemError as exception_message:
-        print(exception_message)
+        pprint(exception_message)
 
 def create_dummy_records(conn, dns_zone):
     '''Create new records in the infoblox zone'''
@@ -132,348 +138,263 @@ def create_dummy_records(conn, dns_zone):
         )
 
     except Exception as exception_message:
-        print(exception_message)
+        pprint(exception_message)
 
-def collect_records(conn, dns_zone):
+def collect_records(conn, record_type, search_string, regex_search):
     ''' Find all records in database'''
     # Search entries
-    all_records = objects.Allrecords.search_all(conn, zone=dns_zone)
-    return all_records
+    records = []
+    if record_type in ['All', 'all']:
+        if search_string in ['All', 'all', ''] or regex_search:
+            search_string = "(.*)"
 
-def sort_records(all_records, regex_string):
-    '''Sort all records'''
-    found_records = []
-    other_records = []
+        for record_type in ['a', 'aaaa', 'txt', 'host']:
+            if regex_search:
+                try:
+                    record = conn.get_object(f"record:{record_type}", {'name~': search_string})
 
-    for record in all_records:
+                    if record is not None:
+                        records += record
 
-        record_fqdn = record.name + "." + record.zone
-
-        try:
-            if re.search(r'' + regex_string, str(record.name)):
-                found_records += [[record.name, record.zone, record.type, record_fqdn, record.ref]]
+                except Exception as exception_message:
+                    pprint(exception_message)
 
             else:
-                other_records += [[record.name, record.zone, record.type, record_fqdn, record.ref]]
+                if search_string == "(.*)":
+                    try:
+                        record = conn.get_object(f"record:{record_type}", {'name~': search_string})
+
+                        if record is not None:
+                            records += record
+
+                    except Exception as exception_message:
+                        pprint(exception_message)
+
+                else:
+                    try:
+                        record = conn.get_object(f"record:{record_type}", {'name': search_string})
+
+                        if record is not None:
+                            records += record
+                            
+                    except Exception as exception_message:
+                        pprint(exception_message)
+
+
+    if records is None:
+        print("No records found for record search parameters")
+
+    else:
+        try:
+            if XDEBUG_FLAG:
+                pprint(records)
+                return records
+
+            elif SDEBUG_FLAG:
+                print(f"Records collection initiated\n\trecord_type: {record_type}\n\tsearch_string: {search_string}\n\tregex_search_flag: {regex_search}")
+                pprint(records)
+                return records
+
+            else:
+                return records
 
         except SystemError as exception_message:
-            print(exception_message)
+            pprint(exception_message)
 
-    return found_records, other_records
-
-def delete_records(conn, found_records, regex_string):
+def delete_records(conn, records):
     '''Delete entries'''
-    for record in found_records:
+    for record in records:
+
+        fqdn = record['name']
+        ref = (record['_ref'])
+        record_type = ((record['_ref']).split("/")[0])
 
         if SDEBUG_FLAG:
-            #print((other_records[['NAME', 'ZONE', 'TYPE', 'FQDN', 'REF']]).to_string(index=False))
-            print("XDebug enabled. Skipping printing panda record.")
-            for record in records:
-                print("Record for deletion")
-                print(record)
+            print(f"SEARCHING FOR RECORD:\n\tName: {fqdn}\n\tRef: {ref}\n\tType: {record_type}")
+            pprint(record)
 
-        record_type = record[2]
-        record_fqdn = record[3]
-        record_ref = record[4]
+        if XDEBUG_FLAG:
+            print(f"SEARCHING FOR RECORD:\n\tName: {fqdn}\n\tRef: {ref}\n\tType: {record_type}")
 
-        if (record_type) == "record:a":
+        if record_type == "record:a":
             try:
-                arecord = objects.ARecord.search(conn, name=record_fqdn, ref=record_ref)
+                arecord = objects.ARecord.search(conn, name=fqdn)
 
                 if XDEBUG_FLAG is True:
-                    pprint(vars(arecord))
-                    print(f"Trying to delete {record_fqdn}")
-
-                arecord.delete()
+                    pprint(f"Trying to delete {fqdn}\n\ttype: {type(arecord)}\n\tref: {ref}")
+                
+                elif SDEBUG_FLAG is True:
+                    pprint(f"Trying to delete {fqdn}\n\ttype: {type(arecord)}\n\tref: {ref}")
+                
+                else:
+                    arecord.delete()
 
             except SystemError as exception_message:
-                print(exception_message)
+                pprint(exception_message)
 
-        if (record_type) == "record:aaaa":
+        if record_type == "record:aaaa":
             try:
-                aaaarecord = objects.AAAARecord.search(conn, name=record_fqdn, ref=record_ref)
+                aaaarecord = objects.AAAARecord.search(conn, name=fqdn)
 
                 if XDEBUG_FLAG is True:
-                    pprint(vars(aaaarecord))
-                    print(f"Trying to delete {record_fqdn}")
+                    pprint(aaaarecord)
+                    pprint(f"Trying to delete {record['name']}")
+                
+                elif SDEBUG_FLAG is True:
+                    pprint(aaaarecord)
+                    pprint(f"Trying to delete {record['name']}")
 
                 aaaarecord.delete()
 
             except SystemError as exception_message:
-                print(exception_message)
+                pprint(exception_message)
 
-        if (record_type) == "record:cname":
+        if record_type == "record:cname":
             try:
-                cnamerecord = objects.CNAMERecord.search(conn, name=record_fqdn, ref=record_ref)
+                cnamerecord = objects.CNAMERecord.search(conn, name=fqdn)
 
                 if XDEBUG_FLAG is True:
-                    pprint(vars(cnamerecord))
-                    print(f"Trying to delete {record_fqdn}")
+                    pprint(cnamerecord)
+                    pprint(f"Trying to delete {record['name']}")
 
+                elif SDEBUG_FLAG is True:
+                    pprint(cnamerecord)
+                    pprint(f"Trying to delete {record['name']}")
 
                 cnamerecord.delete()
 
             except SystemError as exception_message:
-                print(exception_message)
+                pprint(exception_message)
 
-        if (record_type) == "record:txt":
+        if record_type == "record:txt":
             try:
-                txtrecord = objects.TXTRecord.search(conn, name=record_fqdn, ref=record_ref)
+                txtrecord = objects.TXTRecord.search(conn, name=fqdn)
 
                 if XDEBUG_FLAG is True:
-                    pprint(vars(txtrecord))
-                    print(f"Trying to delete {record_fqdn}")
+                    pprint(txtrecord)
+                    pprint(f"Trying to delete {record['name']}")
+
+                elif SDEBUG_FLAG is True:
+                    pprint(txtrecord)
+                    pprint(f"Trying to delete {record['name']}")
 
                 txtrecord.delete()
 
             except SystemError as exception_message:
-                print(exception_message)
+                pprint(exception_message)
 
-        if (record_type) == "record:mx":
+        if record_type == "record:mx":
             try:
-                mxrecord = objects.MXRecord.search(conn, name=record_fqdn, ref=record_ref)
+                mxrecord = objects.MXRecord.search(conn, name=fqdn)
 
                 if XDEBUG_FLAG is True:
-                    pprint(vars(mxrecord))
-                    print(f"Trying to delete {record_fqdn}")
+                    pprint(mxrecord)
+                    pprint(f"Trying to delete {record['name']}")
+
+                elif SDEBUG_FLAG is True:
+                    pprint(mxrecord)
+                    pprint(f"Trying to delete {record['name']}")
 
                 mxrecord.delete()
 
             except SystemError as exception_message:
-                print(exception_message)
+                pprint(exception_message)
 
-        if (record_type) == "record:host_ipv4addr":
+        if record_type == "record:host_ipv4addr":
             try:
-                hostv4record = objects.HostRecord.search(conn, name=record_fqdn, ref=record_ref)
+                hostv4record = objects.HostRecord.search(conn, name=fqdn)
 
                 if XDEBUG_FLAG is True:
                     pprint(vars(hostv4record))
-                    print(f"Trying to delete {record_fqdn}")
+                    pprint(f"Trying to delete {record['name']}")
+
+                elif SDEBUG_FLAG is True:
+                    pprint(vars(hostv4record))
+                    pprint(f"Trying to delete {record['name']}")
 
                 hostv4record.delete()
 
             except SystemError as exception_message:
-                print(exception_message)
+                pprint(exception_message)
 
-        if (record_type) == "record:host_ipv6addr":
+        if record_type == "record:host_ipv6addr":
             try:
-                hostv6record = objects.HostRecord.search(conn, name=record_fqdn, ref=record_ref)
-                
+                hostv6record = objects.HostRecord.search(conn, name=fqdn)
+
                 if XDEBUG_FLAG is True:
-                    pprint(vars(hostv6record))
-                    print(f"Trying to delete {record_fqdn}")
+                    pprint(hostv6record)
+                    pprint(f"Trying to delete {record['name']}")
+
+                elif SDEBUG_FLAG is True:
+                    pprint(hostv6record)
+                    pprint(f"Trying to delete {record['name']}")
 
                 hostv6record.delete()
 
             except SystemError as exception_message:
-                print(exception_message)
+                pprint(exception_message)
 
-def print_all_records(found_records, other_records):
+def print_records(records):
     '''Print all records'''
 
     if XDEBUG_FLAG:
-        # Print other records
-        print("======-------------OTHER RECORDS-------------=====")
-        other_records = pandas.DataFrame(other_records, columns = ['NAME', 'ZONE', 'TYPE', 'FQDN', 'REF'])
-
-        print((other_records[['NAME', 'ZONE', 'TYPE', 'FQDN']]).to_string(index=False))
-        print("======---------------------------------------=====")
-
-        # Gaps
-        print("\n")
-
-        # Print mgmt records
-        print("======------------CAPTURED RECORDS-----------=====")
-        found_records = pandas.DataFrame(found_records, columns = ['NAME', 'ZONE', 'TYPE', 'FQDN', 'REF'])
-        print((found_records[['NAME', 'ZONE', 'TYPE', 'FQDN']]).to_string(index=False))
-        print("======---------------------------------------=====")
+        # Print found
+        print("======-------------------CAPTURED RECORDS------------------=====")
+        print((pandas.DataFrame(records)).to_string(index=False, max_colwidth=40, justify="left"))
+        print("======-----------------------------------------------------=====")
     
     elif SDEBUG_FLAG:
-        #print((other_records[['NAME', 'ZONE', 'TYPE', 'FQDN', 'REF']]).to_string(index=False))
-        print("XDebug enabled. Skipping printing panda record.")
+        print("Super Debugging Enabled: Pandas dataframe printing disabled.")
 
-        for record in found_records:
+        for record in records:
             #Print callable methods
-            print(record)
+            pprint(record)
 
     else:
-        # Print other records
-        print("======-------------OTHER RECORDS-------------=====")
-        other_records = pandas.DataFrame(other_records, columns = ['NAME', 'ZONE', 'TYPE', 'FQDN', 'REF'])
+        # Print found records
+        print("======-------------------CAPTURED RECORDS------------------=====")
+        print((pandas.DataFrame(records)).to_string(index=False, max_colwidth=40, justify="left"))
+        print("======-----------------------------------------------------=====")
 
-        print((other_records[['NAME', 'ZONE', 'TYPE', 'FQDN']]).to_string(index=False))
-        print("======---------------------------------------=====")
-
-        # Gaps
-        print("\n")
-
-        # Print mgmt records
-        print("======------------CAPTURED RECORDS-----------=====")
-        found_records = pandas.DataFrame(found_records, columns = ['NAME', 'ZONE', 'TYPE', 'FQDN', 'REF'])
-        print((found_records[['NAME', 'ZONE', 'TYPE', 'FQDN']]).to_string(index=False))
-        print("======---------------------------------------=====")
-
-def print_captured_records(found_records):
-    '''Print mgmt records'''
-
-    if XDEBUG_FLAG:
-        # Print mgmt records
-        print("======------------CAPTURED RECORDS-----------=====")
-        found_records = pandas.DataFrame(found_records, columns = ['NAME', 'ZONE', 'TYPE', 'FQDN', 'REF'])
-        print((found_records[['NAME', 'ZONE', 'TYPE', 'FQDN']]).to_string(index=False))
-        print("======---------------------------------------=====")
-
-    elif SDEBUG_FLAG:
-        #print((other_records[['NAME', 'ZONE', 'TYPE', 'FQDN', 'REF']]).to_string(index=False))
-        print("XDebug enabled. Skipping printing panda record.")
-
-        for record in found_records:
-            #Print callable methods
-            print(record)
-    else:
-        # Print mgmt records
-        print("======------------CAPTURED RECORDS-----------=====")
-        found_records = pandas.DataFrame(found_records, columns = ['NAME', 'ZONE', 'TYPE', 'FQDN', 'REF'])
-        print((found_records[['NAME', 'ZONE', 'TYPE', 'FQDN']]).to_string(index=False))
-        print("======---------------------------------------=====")
-
-def print_other_records(other_records):
-    '''Print other records'''
-
-    if XDEBUG_FLAG:
-        # Print other records
-        print("======-------------OTHER RECORDS-------------=====")
-        other_records = pandas.DataFrame(other_records, columns = ['NAME', 'ZONE', 'TYPE', 'FQDN', 'REF'])
-        print((other_records[['NAME', 'ZONE', 'TYPE', 'FQDN']]).to_string(index=False))
-        print("======---------------------------------------=====")
-
-    elif SDEBUG_FLAG:
-        #print((other_records[['NAME', 'ZONE', 'TYPE', 'FQDN', 'REF']]).to_string(index=False))
-        print("XDebug enabled. Skipping printing panda record.")
-
-        for record in other_records:
-            #Print callable methods
-            pprint(vars(record))
-
-    else:
-        # Print other records
-        print("======-------------OTHER RECORDS-------------=====")
-        other_records = pandas.DataFrame(other_records, columns = ['NAME', 'ZONE', 'TYPE', 'FQDN', 'REF'])
-        print((other_records[['NAME', 'ZONE', 'TYPE', 'FQDN']]).to_string(index=False))
-        print("======---------------------------------------=====")
-
-def start_records_manipulation(conn, dns_zone, regex_string, create_record,
-    print_type_captured, print_type_other, set_records_delete
+def start_records_manipulation(conn, dns_zone, record_type, search_string, create_record,
+     records, set_records_delete, regex_search
     ):
     '''Manipulation function'''
     # Prompt to create dummy records
     try:
-
-        if eval(str(create_record)) is True:
-            print("Proceeding to create records")
+        if create_record is True:
+            pprint("Proceeding to create records")
 
             try:
                 create_dummy_records(conn, dns_zone)
-                records_print(conn, dns_zone, regex_string, print_type_captured,
-                    print_type_other, set_records_delete
-                    )
+                print_records(records)
 
             except SystemError as exception_message:
-                print(exception_message)
+                pprint(exception_message)
 
-        elif eval(str(create_record)) is False:
+        else:
             try:
-                records_print(conn, dns_zone, regex_string, print_type_captured,
-                    print_type_other, set_records_delete
-                    )
+                print_records(records)
 
             except SystemError as exception_message:
-                print(exception_message)
+                pprint(exception_message)
 
     except SystemError as exception_message:
-        print(exception_message)
+        pprint(exception_message)
 
     try:
         if set_records_delete is True:
-
-            all_records = collect_records(conn, dns_zone)
             input("Press enter to continue with deletion (CTRL+C to cancel)")
             
             try:
-
-                delete_records(conn, (sort_records(collect_records(conn, dns_zone), regex_string))[0], regex_string)
-                records_print(conn, dns_zone, regex_string, print_type_captured,
-                    print_type_other, set_records_delete
-                    )
+                delete_records(conn, (collect_records(conn, record_type, search_string, regex_search)))
+                print_records((collect_records(conn, record_type, search_string, regex_search)))
 
             except SystemError as exception_message:
-                print(exception_message)
+                pprint(exception_message)
 
     except SystemError as exception_message:
-        print(exception_message)
-
-def records_print(conn, dns_zone, regex_string, print_type_captured,
-    print_type_other, set_records_delete
-    ):
-    '''Orchestrates printing'''
-
-    if XDEBUG_FLAG:
-        print(f"Printing passed variables to function: records_print\n\tprint_type_captured: {print_type_captured}\n\tprint_type_other: {print_type_other}\n\tset_records_delete: {set_records_delete}")
-
-    # Collect records and sort them
-    sorted_records = sort_records(collect_records(conn, dns_zone), regex_string)
-
-    try:
-        # If all defaults, print all records
-        if (print_type_captured is False and print_type_other is False
-            and set_records_delete is False
-            ):
-            print_captured_records(sorted_records[0])
-
-        # If only the -c flag is set, print captured records
-        elif (print_type_captured is False and print_type_other is False
-            and set_records_delete is True
-            ):
-            print_all_records(sorted_records[0], sorted_records[1])
-
-        # If only the -c flag is set, print captured records
-        elif (print_type_captured is True and print_type_other is False
-            and set_records_delete is False
-            ):
-            print_captured_records(sorted_records[0])
-
-        # If only the -c flag is set, print captured records
-        elif (print_type_captured is True and print_type_other is False
-            and set_records_delete is True
-            ):
-            print_captured_records(sorted_records[0])
-
-        # If only the -i flag is set, print other records
-        elif (print_type_captured is True and print_type_other is True
-            and set_records_delete is True
-            ):
-            print_other_records(sorted_records[1])
-
-        # If only the -c flag is set, print captured records
-        elif (print_type_captured is False and print_type_other is False
-            and set_records_delete is True
-            ):
-            print_captured_records(sorted_records[0])
-
-        # If only the -i flag is set, print other records
-        elif (print_type_captured is False and print_type_other is True
-            and set_records_delete is False
-            ):
-            print_other_records(sorted_records[1])
-
-        # If only the -i flag is set, print other records
-        elif (print_type_captured is False and print_type_other is True
-            and set_records_delete is True
-            ):
-            print_other_records(sorted_records[1])
-
-    except SystemError as exception_message:
-        print(exception_message)
+        pprint(exception_message)
 
 # Call main function
 
@@ -487,4 +408,12 @@ if __name__ == '__main__':
         main(args)
 
     except SystemError as exception_message:
-        print(exception_message)
+        pprint(exception_message)
+
+
+
+search_string = ""
+conn = 
+
+for record_type in []
+    print(conn.get_object(f"record:{record_type}", {'name~': search_string}))
