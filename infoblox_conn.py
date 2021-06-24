@@ -10,13 +10,16 @@ Justin Garcia 24361 | 6/22/2021
 
 # Debugging assistance
 from pprint import pprint
+
+#
+import getpass
+
+#
 import argparse
 import pandas
 import urllib3
 
 # Load additional
-from dotenv import load_dotenv
-from dotenv.main import dotenv_values
 from infoblox_client import connector
 from infoblox_client import objects
 
@@ -63,14 +66,20 @@ default=False, help="Enable more debug messages. Default: True"
 
 # Supress urllib3 warnings and load dotenv for this script
 urllib3.disable_warnings()
-load_dotenv()
 
 # Enable args
 def main(_args):
     '''Main function'''
     try:
-
-        conn = connector.Connector(dotenv_values())
+        user = input("Infoblox username: ")
+        password = getpass.getpass("Infoblox password: ")
+        opts = {'host': "10.0.0.100", 'username': user, 'password': password}
+        
+        try:
+            conn = connector.Connector(opts)
+        
+        except SystemError as exception_message:
+            pprint(exception_message)
 
     except SystemError as exception_message:
         pprint(exception_message)
