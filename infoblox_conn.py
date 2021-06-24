@@ -34,11 +34,8 @@ help="Record type to search. Default: All"
 )
 
 arguments.add_argument('search_string', action="store", nargs='?',
-default="All", help="Hostname to search for")
+default="all", help="Hostname to search for")
 
-arguments.add_argument('-z', '--zone', action="store", nargs='?',
-dest="dns_zone", default="thenile.gemstatecyber.com", help="Specify DNS zone to act on"
-)
 
 arguments.add_argument('-r', '--regex', action="store_true", dest="regex_search",
 default=False, help="Enables regex support for hostname"
@@ -49,7 +46,11 @@ default=False, help="Prompt to delete records. Default: Print, don't prompt to d
 )
 
 arguments.add_argument('-c', '--create', action="store_true", dest='create_record',
-default=False, help="Enable fake record creation. Default: False"
+default=False, help="Enable fake record creation. Specify zone with -z or --zone Default: False"
+)
+
+arguments.add_argument('-z', '--zone', action="store", nargs='?',
+dest="dns_zone", default="thenile.gemstatecyber.com", help="Specify DNS zone to act on. Only works with create flag"
 )
 
 arguments.add_argument('-s', '--superdebug', action="store_true", dest='sdebug_flag',
@@ -144,14 +145,14 @@ def collect_records(conn, record_type, search_string, regex_search):
     ''' Find all records in database'''
     # Search entries
     records = []
-    if record_type in ['All', 'all']:
-        if search_string in ['All', 'all', ''] or regex_search:
-            search_string = "(.*)"
 
+    if search_string in ['All', 'all', '']:
+        search_string = "(.*)"
+    if record_type in ['All', 'all']:
         for record_type in ['a', 'aaaa', 'txt', 'host']:
             if regex_search:
                 try:
-                    record = conn.get_object(f"record:{record_type}", {'name~': search_string})
+                    record = conn.get_object(f"record:{(record_type).lower()}", {'name~': search_string})
 
                     if record is not None:
                         records += record
@@ -162,7 +163,7 @@ def collect_records(conn, record_type, search_string, regex_search):
             else:
                 if search_string == "(.*)":
                     try:
-                        record = conn.get_object(f"record:{record_type}", {'name~': search_string})
+                        record = conn.get_object(f"record:{(record_type).lower()}", {'name~': search_string})
 
                         if record is not None:
                             records += record
@@ -172,14 +173,23 @@ def collect_records(conn, record_type, search_string, regex_search):
 
                 else:
                     try:
-                        record = conn.get_object(f"record:{record_type}", {'name': search_string})
+                        record = conn.get_object(f"record:{(record_type).lower()}", {'name': search_string})
 
                         if record is not None:
                             records += record
-                            
+
                     except Exception as exception_message:
                         pprint(exception_message)
+        
+    else:
+        try:
+            record = conn.get_object(f"record:{(record_type).lower()}", {'name~': search_string})
 
+            if record is not None:
+                records += record
+
+        except Exception as exception_message:
+            pprint(exception_message)
 
     if records is None:
         print("No records found for record search parameters")
@@ -191,7 +201,7 @@ def collect_records(conn, record_type, search_string, regex_search):
                 return records
 
             elif SDEBUG_FLAG:
-                print(f"Records collection initiated\n\trecord_type: {record_type}\n\tsearch_string: {search_string}\n\tregex_search_flag: {regex_search}")
+                print(f"Records collection initiated\n\trecord_type: {(record_type).lower()}\n\tsearch_string: {search_string}\n\tregex_search_flag: {regex_search}")
                 pprint(records)
                 return records
 
@@ -210,11 +220,11 @@ def delete_records(conn, records):
         record_type = ((record['_ref']).split("/")[0])
 
         if SDEBUG_FLAG:
-            print(f"SEARCHING FOR RECORD:\n\tName: {fqdn}\n\tRef: {ref}\n\tType: {record_type}")
+            print(f"SEARCHING FOR RECORD:\n\tName: {fqdn}\n\tRef: {ref}\n\tType: {(record_type).lower()}")
             pprint(record)
 
         if XDEBUG_FLAG:
-            print(f"SEARCHING FOR RECORD:\n\tName: {fqdn}\n\tRef: {ref}\n\tType: {record_type}")
+            print(f"SEARCHING FOR RECORD:\n\tName: {fqdn}\n\tRef: {ref}\n\tType: {(record_type).lower()}")
 
         if record_type == "record:a":
             try:
@@ -409,11 +419,3 @@ if __name__ == '__main__':
 
     except SystemError as exception_message:
         pprint(exception_message)
-
-
-
-search_string = ""
-conn = 
-
-for record_type in []
-    print(conn.get_object(f"record:{record_type}", {'name~': search_string}))

@@ -18,6 +18,10 @@ for record_type in ['a', 'aaaa', 'txt', 'host']:
 
     if record is not None:
         records += record
+        for rec in record:
+            print(type(rec))
+            print(rec)
+            rec.delete()
 
 print(records)
 print(len(records))
