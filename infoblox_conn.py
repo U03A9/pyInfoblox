@@ -80,10 +80,11 @@ def main(_args):
         
         except SystemError as exception_message:
             pprint(exception_message)
+            exit()
 
     except SystemError as exception_message:
         pprint(exception_message)
-
+        exit()
     try:
         records = collect_records(conn, args.record_type,
          args.search_string, args.regex_search)
@@ -93,7 +94,6 @@ def main(_args):
 
     # Start kickoff
     try:
-
         start_records_manipulation(conn, args.dns_zone, args.record_type,
          args.search_string, args.create_record, records, args.set_records_delete,
          args.regex_search
@@ -153,39 +153,50 @@ def create_dummy_records(conn, dns_zone):
 def collect_records(conn, record_type, search_string, regex_search):
     ''' Find all records in database'''
     # Search entries
-    records = []
+    records = ""
+    #i = 0
 
+
+    # Check if user wants all records, sub for regex call
     if search_string in ['All', 'all', '', ' ']:
         search_string = "(.*)"
+
     if record_type in ['All', 'all']:
-        for record_type in ['a', 'aaaa', 'txt', 'host']:
+        # Collect all A, AAAA, TXT, and HOST records
+        for record_type in ['a', 'aaaa', 'txt', 'host', 'cname']:
             if regex_search:
                 try:
+                    # Perform regex search with supplied search string
                     record = conn.get_object(f"record:{(record_type).lower()}", {'name~': search_string})
 
                     if record is not None:
-                        records += record
+                        print(f"Found record {record[0]['_ref']}")
+                        conn.delete_object(record[0]['_ref'])
+                        # records += record[0]['_ref']
+                        # i = i + 1
 
                 except Exception as exception_message:
                     pprint(exception_message)
 
+            # If search string supplied is all and regex isn't enabled, perform regex search instead
             else:
                 if search_string == "(.*)":
                     try:
                         record = conn.get_object(f"record:{(record_type).lower()}", {'name~': search_string})
 
                         if record is not None:
-                            records += record
+                            records += record[0]['_ref']
 
                     except Exception as exception_message:
                         pprint(exception_message)
 
+                # If search string isn't all, perform whole fqdn search without regex support
                 else:
                     try:
                         record = conn.get_object(f"record:{(record_type).lower()}", {'name': search_string})
 
                         if record is not None:
-                            records += record
+                            records += record[0]['_ref']
 
                     except Exception as exception_message:
                         pprint(exception_message)
@@ -195,7 +206,7 @@ def collect_records(conn, record_type, search_string, regex_search):
             record = conn.get_object(f"record:{(record_type).lower()}", {'name~': search_string})
 
             if record is not None:
-                records += record
+                records += record[0]['_ref']
 
         except Exception as exception_message:
             pprint(exception_message)
@@ -203,6 +214,7 @@ def collect_records(conn, record_type, search_string, regex_search):
     if records is None:
         print("No records found for record search parameters")
 
+    # Return values of records
     else:
         try:
             if XDEBUG_FLAG:
@@ -221,137 +233,144 @@ def collect_records(conn, record_type, search_string, regex_search):
             pprint(exception_message)
 
 def delete_records(conn, records):
-    '''Delete entries'''
+
     for record in records:
+        if record is not None or " ":
+            print(f"attempting to delete: {record}")
+            conn.delete_object(record)
 
-        fqdn = record['name']
-        ref = (record['_ref'])
-        record_type = ((record['_ref']).split("/")[0])
+# def delete_records(conn, records):
+#     '''Delete entries'''
+#     for record in records:
 
-        if SDEBUG_FLAG:
-            print(f"SEARCHING FOR RECORD:\n\tName: {fqdn}\n\tRef: {ref}\n\tType: {(record_type).lower()}")
-            pprint(record)
+#         fqdn = record['name']
+#         ref = (record['_ref'])
+#         record_type = ((record['_ref']).split("/")[0])
 
-        if XDEBUG_FLAG:
-            print(f"SEARCHING FOR RECORD:\n\tName: {fqdn}\n\tRef: {ref}\n\tType: {(record_type).lower()}")
+#         if SDEBUG_FLAG:
+#             print(f"SEARCHING FOR RECORD:\n\tName: {fqdn}\n\tRef: {ref}\n\tType: {(record_type).lower()}")
+#             pprint(record)
 
-        if record_type == "record:a":
-            try:
-                arecord = objects.ARecord.search(conn, name=fqdn)
+#         if XDEBUG_FLAG:
+#             print(f"SEARCHING FOR RECORD:\n\tName: {fqdn}\n\tRef: {ref}\n\tType: {(record_type).lower()}")
 
-                if XDEBUG_FLAG is True:
-                    pprint(f"Trying to delete {fqdn}\n\ttype: {type(arecord)}\n\tref: {ref}")
+#         if record_type == "record:a":
+#             try:
+#                 arecord = objects.ARecord.search(conn, name=fqdn)
+
+#                 if XDEBUG_FLAG is True:
+#                     pprint(f"Trying to delete {fqdn}\n\ttype: {type(arecord)}\n\tref: {ref}")
                 
-                elif SDEBUG_FLAG is True:
-                    pprint(f"Trying to delete {fqdn}\n\ttype: {type(arecord)}\n\tref: {ref}")
+#                 elif SDEBUG_FLAG is True:
+#                     pprint(f"Trying to delete {fqdn}\n\ttype: {type(arecord)}\n\tref: {ref}")
                 
-                else:
-                    arecord.delete()
+#                 else:
+#                     arecord.delete()
 
-            except SystemError as exception_message:
-                pprint(exception_message)
+#             except SystemError as exception_message:
+#                 pprint(exception_message)
 
-        if record_type == "record:aaaa":
-            try:
-                aaaarecord = objects.AAAARecord.search(conn, name=fqdn)
+#         if record_type == "record:aaaa":
+#             try:
+#                 aaaarecord = objects.AAAARecord.search(conn, name=fqdn)
 
-                if XDEBUG_FLAG is True:
-                    pprint(aaaarecord)
-                    pprint(f"Trying to delete {record['name']}")
+#                 if XDEBUG_FLAG is True:
+#                     pprint(aaaarecord)
+#                     pprint(f"Trying to delete {record['name']}")
                 
-                elif SDEBUG_FLAG is True:
-                    pprint(aaaarecord)
-                    pprint(f"Trying to delete {record['name']}")
+#                 elif SDEBUG_FLAG is True:
+#                     pprint(aaaarecord)
+#                     pprint(f"Trying to delete {record['name']}")
 
-                aaaarecord.delete()
+#                 aaaarecord.delete()
 
-            except SystemError as exception_message:
-                pprint(exception_message)
+#             except SystemError as exception_message:
+#                 pprint(exception_message)
 
-        if record_type == "record:cname":
-            try:
-                cnamerecord = objects.CNAMERecord.search(conn, name=fqdn)
+#         if record_type == "record:cname":
+#             try:
+#                 cnamerecord = objects.CNAMERecord.search(conn, name=fqdn)
 
-                if XDEBUG_FLAG is True:
-                    pprint(cnamerecord)
-                    pprint(f"Trying to delete {record['name']}")
+#                 if XDEBUG_FLAG is True:
+#                     pprint(cnamerecord)
+#                     pprint(f"Trying to delete {record['name']}")
 
-                elif SDEBUG_FLAG is True:
-                    pprint(cnamerecord)
-                    pprint(f"Trying to delete {record['name']}")
+#                 elif SDEBUG_FLAG is True:
+#                     pprint(cnamerecord)
+#                     pprint(f"Trying to delete {record['name']}")
 
-                cnamerecord.delete()
+#                 cnamerecord.delete()
 
-            except SystemError as exception_message:
-                pprint(exception_message)
+#             except SystemError as exception_message:
+#                 pprint(exception_message)
 
-        if record_type == "record:txt":
-            try:
-                txtrecord = objects.TXTRecord.search(conn, name=fqdn)
+#         if record_type == "record:txt":
+#             try:
+#                 txtrecord = objects.TXTRecord.search(conn, name=fqdn)
 
-                if XDEBUG_FLAG is True:
-                    pprint(txtrecord)
-                    pprint(f"Trying to delete {record['name']}")
+#                 if XDEBUG_FLAG is True:
+#                     pprint(txtrecord)
+#                     pprint(f"Trying to delete {record['name']}")
 
-                elif SDEBUG_FLAG is True:
-                    pprint(txtrecord)
-                    pprint(f"Trying to delete {record['name']}")
+#                 elif SDEBUG_FLAG is True:
+#                     pprint(txtrecord)
+#                     pprint(f"Trying to delete {record['name']}")
 
-                txtrecord.delete()
+#                 txtrecord.delete()
 
-            except SystemError as exception_message:
-                pprint(exception_message)
+#             except SystemError as exception_message:
+#                 pprint(exception_message)
 
-        if record_type == "record:mx":
-            try:
-                mxrecord = objects.MXRecord.search(conn, name=fqdn)
+#         if record_type == "record:mx":
+#             try:
+#                 mxrecord = objects.MXRecord.search(conn, name=fqdn)
 
-                if XDEBUG_FLAG is True:
-                    pprint(mxrecord)
-                    pprint(f"Trying to delete {record['name']}")
+#                 if XDEBUG_FLAG is True:
+#                     pprint(mxrecord)
+#                     pprint(f"Trying to delete {record['name']}")
 
-                elif SDEBUG_FLAG is True:
-                    pprint(mxrecord)
-                    pprint(f"Trying to delete {record['name']}")
+#                 elif SDEBUG_FLAG is True:
+#                     pprint(mxrecord)
+#                     pprint(f"Trying to delete {record['name']}")
 
-                mxrecord.delete()
+#                 mxrecord.delete()
 
-            except SystemError as exception_message:
-                pprint(exception_message)
+#             except SystemError as exception_message:
+#                 pprint(exception_message)
 
-        if record_type == "record:host_ipv4addr":
-            try:
-                hostv4record = objects.HostRecord.search(conn, name=fqdn)
+#         if record_type == "record:host_ipv4addr":
+#             try:
+#                 hostv4record = objects.HostRecord.search(conn, name=fqdn)
 
-                if XDEBUG_FLAG is True:
-                    pprint(vars(hostv4record))
-                    pprint(f"Trying to delete {record['name']}")
+#                 if XDEBUG_FLAG is True:
+#                     pprint(vars(hostv4record))
+#                     pprint(f"Trying to delete {record['name']}")
 
-                elif SDEBUG_FLAG is True:
-                    pprint(vars(hostv4record))
-                    pprint(f"Trying to delete {record['name']}")
+#                 elif SDEBUG_FLAG is True:
+#                     pprint(vars(hostv4record))
+#                     pprint(f"Trying to delete {record['name']}")
 
-                hostv4record.delete()
+#                 hostv4record.delete()
 
-            except SystemError as exception_message:
-                pprint(exception_message)
+#             except SystemError as exception_message:
+#                 pprint(exception_message)
 
-        if record_type == "record:host_ipv6addr":
-            try:
-                hostv6record = objects.HostRecord.search(conn, name=fqdn)
+#         if record_type == "record:host_ipv6addr":
+#             try:
+#                 hostv6record = objects.HostRecord.search(conn, name=fqdn)
 
-                if XDEBUG_FLAG is True:
-                    pprint(hostv6record)
-                    pprint(f"Trying to delete {record['name']}")
+#                 if XDEBUG_FLAG is True:
+#                     pprint(hostv6record)
+#                     pprint(f"Trying to delete {record['name']}")
 
-                elif SDEBUG_FLAG is True:
-                    pprint(hostv6record)
-                    pprint(f"Trying to delete {record['name']}")
+#                 elif SDEBUG_FLAG is True:
+#                     pprint(hostv6record)
+#                     pprint(f"Trying to delete {record['name']}")
 
-                hostv6record.delete()
+#                 hostv6record.delete()
 
-            except SystemError as exception_message:
-                pprint(exception_message)
+#             except SystemError as exception_message:
+#                 pprint(exception_message)
 
 def print_records(records):
     '''Print all records'''
@@ -359,7 +378,8 @@ def print_records(records):
     if XDEBUG_FLAG:
         # Print found
         print("======-------------------CAPTURED RECORDS------------------=====")
-        print((pandas.DataFrame(records)).to_string(index=False, max_colwidth=40, justify="left"))
+        #print((pandas.DataFrame(records)).to_string(index=False, max_colwidth=40, justify="left"))
+        print(records)
         print("======-----------------------------------------------------=====")
     
     elif SDEBUG_FLAG:
@@ -372,7 +392,8 @@ def print_records(records):
     else:
         # Print found records
         print("======-------------------CAPTURED RECORDS------------------=====")
-        print((pandas.DataFrame(records)).to_string(index=False, max_colwidth=40, justify="left"))
+        #print((pandas.DataFrame(records)).to_string(index=False, max_colwidth=40, justify="left"))
+        print(records)
         print("======-----------------------------------------------------=====")
 
 def start_records_manipulation(conn, dns_zone, record_type, search_string, create_record,

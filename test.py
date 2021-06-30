@@ -13,7 +13,7 @@ conn = connector.Connector(opts)
 search_string = input("Provide a host to search for. Regex is supported: ")
 records = []
 
-for record_type in ['a', 'aaaa', 'txt', 'host']:
+for record_type in ['a', 'aaaa', 'txt', 'host', 'cname']:
     record = conn.get_object(f"record:{record_type}", {'name~': search_string})
 
     if record is not None:
