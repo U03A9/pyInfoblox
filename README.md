@@ -1,6 +1,6 @@
 # pyInfoblox
-## This is a test
+## Infoblox Grid Manager API Frontend
 
-### This is another test
+Provides an intuitive way to query and manage DNS records through the Infoblox Community API
 
-#### Test test test
+More info coming!
